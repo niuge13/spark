@@ -1,14 +1,19 @@
+-- Test window operator with codegen on and off.
+--CONFIG_DIM1 spark.sql.codegen.wholeStage=true
+--CONFIG_DIM1 spark.sql.codegen.wholeStage=false,spark.sql.codegen.factoryMode=CODEGEN_ONLY
+--CONFIG_DIM1 spark.sql.codegen.wholeStage=false,spark.sql.codegen.factoryMode=NO_CODEGEN
+
 -- Test data.
 CREATE OR REPLACE TEMPORARY VIEW testData AS SELECT * FROM VALUES
-(null, 1L, 1.0D, date("2017-08-01"), timestamp(1501545600), "a"),
-(1, 1L, 1.0D, date("2017-08-01"), timestamp(1501545600), "a"),
-(1, 2L, 2.5D, date("2017-08-02"), timestamp(1502000000), "a"),
-(2, 2147483650L, 100.001D, date("2020-12-31"), timestamp(1609372800), "a"),
-(1, null, 1.0D, date("2017-08-01"), timestamp(1501545600), "b"),
-(2, 3L, 3.3D, date("2017-08-03"), timestamp(1503000000), "b"),
-(3, 2147483650L, 100.001D, date("2020-12-31"), timestamp(1609372800), "b"),
+(null, 1L, 1.0D, date("2017-08-01"), timestamp_seconds(1501545600), "a"),
+(1, 1L, 1.0D, date("2017-08-01"), timestamp_seconds(1501545600), "a"),
+(1, 2L, 2.5D, date("2017-08-02"), timestamp_seconds(1502000000), "a"),
+(2, 2147483650L, 100.001D, date("2020-12-31"), timestamp_seconds(1609372800), "a"),
+(1, null, 1.0D, date("2017-08-01"), timestamp_seconds(1501545600), "b"),
+(2, 3L, 3.3D, date("2017-08-03"), timestamp_seconds(1503000000), "b"),
+(3, 2147483650L, 100.001D, date("2020-12-31"), timestamp_seconds(1609372800), "b"),
 (null, null, null, null, null, null),
-(3, 1L, 1.0D, date("2017-08-01"), timestamp(1501545600), null)
+(3, 1L, 1.0D, date("2017-08-01"), timestamp_seconds(1501545600), null)
 AS testData(val, val_long, val_double, val_date, val_timestamp, cate);
 
 -- RowsBetween
@@ -76,7 +81,15 @@ ntile(2) OVER w AS ntile,
 row_number() OVER w AS row_number,
 var_pop(val) OVER w AS var_pop,
 var_samp(val) OVER w AS var_samp,
-approx_count_distinct(val) OVER w AS approx_count_distinct
+approx_count_distinct(val) OVER w AS approx_count_distinct,
+covar_pop(val, val_long) OVER w AS covar_pop,
+corr(val, val_long) OVER w AS corr,
+stddev_samp(val) OVER w AS stddev_samp,
+stddev_pop(val) OVER w AS stddev_pop,
+collect_list(val) OVER w AS collect_list,
+collect_set(val) OVER w AS collect_set,
+skewness(val_double) OVER w AS skewness,
+kurtosis(val_double) OVER w AS kurtosis
 FROM testData
 WINDOW w AS (PARTITION BY cate ORDER BY val)
 ORDER BY cate, val;
@@ -101,3 +114,14 @@ last_value(false, false) OVER w AS last_value_contain_null
 FROM testData
 WINDOW w AS ()
 ORDER BY cate, val;
+
+-- parentheses around window reference
+SELECT cate, sum(val) OVER (w)
+FROM testData
+WHERE val is not null
+WINDOW w AS (PARTITION BY cate ORDER BY val);
+
+-- with filter predicate
+SELECT val, cate,
+count(val) FILTER (WHERE val > 1) OVER(PARTITION BY cate)
+FROM testData ORDER BY cate, val;
